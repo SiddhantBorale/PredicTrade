@@ -1,18 +1,34 @@
-# main.py
+# server/main.py
 from fastapi import FastAPI
-from pydantic import BaseModel
-import joblib
+from fastapi.middleware.cors import CORSMiddleware
+import json
+import os
+from model.predict import make_prediction
 
 app = FastAPI()
 
-class StockRequest(BaseModel):
-    ticker: str
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # You can restrict to your frontend origin later
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.get("/predict")
-def predict(ticker: str):
-    # dummy logic
-    return {"ticker": ticker, "prediction": "UP", "confidence": 0.81}
+PREDICTIONS_LOG = "data/predictions_log.json"
 
 @app.get("/")
-def read_root():
-    return {"message": "FastAPI is working!"}
+def root():
+    return {"message": "Stock predictor API is running!"}
+
+@app.get("/predict")
+def predict(ticker: str = "AAPL"):
+    result = make_prediction(ticker)
+    return result
+
+@app.get("/predictions")
+def get_all_predictions():
+    if os.path.exists(PREDICTIONS_LOG):
+        with open(PREDICTIONS_LOG, "r") as f:
+            return json.load(f)
+    return []
