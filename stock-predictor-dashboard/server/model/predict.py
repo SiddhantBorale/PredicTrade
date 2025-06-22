@@ -79,6 +79,9 @@ def make_prediction(ticker):
     logs = load_json(LOG_PATH)
     log
 
+    evaluate_previous_predictions(ticker, df)
+    auto_retrain_if_needed(ticker)
+
 def auto_retrain_if_needed(ticker):
     logs = load_json(LOG_PATH)
     recent = [log for log in logs if log["ticker"] == ticker and "actual_result" in log][-5:]

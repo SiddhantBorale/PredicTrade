@@ -16,3 +16,26 @@ body {
 .chart-container {
   margin-top: 30px;
 }
+
+.prediction-table {
+  margin-top: 40px;
+  padding: 20px;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.prediction-table h2 {
+  margin-bottom: 20px;
+}
+
+.prediction-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.prediction-table th, .prediction-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #ddd;
+  text-align: center;
+}
