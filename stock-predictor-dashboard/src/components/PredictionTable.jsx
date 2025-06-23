@@ -5,7 +5,7 @@ export default function PredictionTable() {
   const [predictions, setPredictions] = useState([]);
 
   useEffect(() => {
-    axios.get("http://localhost:5000/predictions")
+    axios.get("https://<your-codespace-name>-5000.app.github.dev/predictions")
       .then((res) => {
         setPredictions(res.data.reverse()); // newest first
       })

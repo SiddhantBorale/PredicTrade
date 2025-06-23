@@ -1,4 +1,3 @@
-# server/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import json
@@ -9,17 +8,15 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # You can restrict to your frontend origin later
+    allow_origins=["*"],  # For now allow all; you can later restrict to GitHub Codespace URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-PREDICTIONS_LOG = "data/predictions_log.json"
-
 @app.get("/")
 def root():
-    return {"message": "Stock predictor API is running!"}
+    return {"message": "API is live"}
 
 @app.get("/predict")
 def predict(ticker: str = "AAPL"):
@@ -28,7 +25,8 @@ def predict(ticker: str = "AAPL"):
 
 @app.get("/predictions")
 def get_all_predictions():
-    if os.path.exists(PREDICTIONS_LOG):
-        with open(PREDICTIONS_LOG, "r") as f:
+    path = "stock-predictor-dashboard/server/data/predictions_log.json"
+    if os.path.exists(path):
+        with open(path) as f:
             return json.load(f)
     return []
