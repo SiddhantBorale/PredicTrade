@@ -49,8 +49,8 @@ def train_and_save(ticker: str):
     X_train, y_train, X_eval, y_eval = load_train_eval(ticker)
 
     # Remove outliers from training target
-    lower = y_train.quantile(0.0)
-    upper = y_train.quantile(1)
+    lower = y_train.quantile(0.05)
+    upper = y_train.quantile(0.95)
     mask = (y_train >= lower) & (y_train <= upper)
     removed = len(y_train) - mask.sum()
     X_train, y_train = X_train[mask], y_train[mask]
