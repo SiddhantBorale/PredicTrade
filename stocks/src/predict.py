@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import timedelta
 
 # Local imports (src/ is on PYTHONPATH when invoked from project root)
-from preprocess import load_last_six_months
+from preprocess import parse_period_to_days, load_last_period
 from features import compute_features
 
 # Paths relative to project root
@@ -14,10 +14,13 @@ MODEL_DIR   = os.path.join(BASE_DIR, 'models')
 RESULTS_DIR = os.path.join(BASE_DIR, 'results')
 
 
-def predict_next_day(ticker: str):
-    # 1) Load last six months of raw data
-    print(f"[ ] Loading raw data for {ticker}")
-    raw_df = load_last_six_months(ticker)
+def predict_next_day(ticker: str, period: str = '6mo'):
+    # Determine period in days
+    period_days = parse_period_to_days(period)
+
+    # 1) Load raw data for the given period
+    print(f"[ ] Loading raw data for {ticker} ({period})")
+    raw_df = load_last_period(ticker, period_days)
 
     # 2) Compute features
     print("[ ] Computing features on latest data window")
@@ -44,7 +47,8 @@ def predict_next_day(ticker: str):
     row = pd.DataFrame([{  
         'date': pred_date.date(),
         'ticker': ticker,
-        'predicted_close': pred_value
+        'predicted_close': pred_value,
+        'period': period
     }])
     if not os.path.exists(out_csv):
         row.to_csv(out_csv, index=False)
@@ -56,11 +60,15 @@ def predict_next_day(ticker: str):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description="Predict next-day stock price and log the result"
+        description="Predict next-day stock price for a given period and log the result"
     )
     parser.add_argument(
         '--ticker', required=True,
         help="Ticker symbol to predict (e.g., AAPL)"
     )
+    parser.add_argument(
+        '--period', default='6mo',
+        help="Data period to use for features (e.g., 6mo, 12mo, 1y)"
+    )
     args = parser.parse_args()
-    predict_next_day(args.ticker)
+    predict_next_day(args.ticker, args.period)

@@ -2,24 +2,33 @@ import os
 import joblib
 import pandas as pd
 import argparse
-import json
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 
-# Paths relative to this file's directory
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+# Paths
+BASE_DIR    = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 PROCESSED_DIR = os.path.join(BASE_DIR, 'data', 'processed')
-MODEL_DIR = os.path.join(BASE_DIR, 'models')
-RESULTS_DIR = os.path.join(BASE_DIR, 'results')
+MODEL_DIR     = os.path.join(BASE_DIR, 'models')
+RESULTS_DIR   = os.path.join(BASE_DIR, 'results')
 
 
 def load_eval_data(ticker: str):
     """
-    Load processed evaluation data for the given ticker.
+    Load evaluation DataFrame for the given ticker, ensuring numeric dtypes.
     Returns:
         X_eval (DataFrame), y_eval (Series)
     """
     eval_path = os.path.join(PROCESSED_DIR, f"{ticker}_eval.csv")
+    if not os.path.exists(eval_path):
+        raise FileNotFoundError(f"Evaluation file not found: {eval_path}")
+
     df = pd.read_csv(eval_path, index_col='Date', parse_dates=['Date'])
+    # Convert all columns to numeric, coerce errors
+    df = df.apply(pd.to_numeric, errors='coerce')
+    df = df.dropna()
+
+    if 'Close' not in df.columns:
+        raise KeyError(f"Expected 'Close' column in evaluation data for {ticker}")
+
     X_eval = df.drop(columns=['Close'])
     y_eval = df['Close']
     return X_eval, y_eval
@@ -27,46 +36,54 @@ def load_eval_data(ticker: str):
 
 def evaluate_and_save(ticker: str):
     """
-    Load the trained model, evaluate on the current-month data,
+    Load the trained model, evaluate on the evaluation split,
     and save metrics to a JSON file.
+    Skips evaluation if no data.
     """
-    # Load model
     model_path = os.path.join(MODEL_DIR, f"{ticker}_model.pkl")
+    eval_results_path = os.path.join(RESULTS_DIR, f"{ticker}_eval_results.json")
+
+    if not os.path.exists(model_path):
+        print(f"[!] Model file not found: {model_path}. Skipping evaluation.")
+        return
+
+    print(f"[ ] Loading evaluation data for {ticker}")
+    try:
+        X_eval, y_eval = load_eval_data(ticker)
+    except (FileNotFoundError, KeyError) as e:
+        print(f"[!] {e}. Skipping evaluation.")
+        return
+
+    if X_eval.empty:
+        print(f"[!] No evaluation samples for {ticker}. Skipping evaluation.")
+        return
+
     print(f"[ ] Loading model from {model_path}")
     model = joblib.load(model_path)
 
-    # Load eval set
-    print(f"[ ] Loading evaluation data for {ticker}")
-    X_eval, y_eval = load_eval_data(ticker)
-
-    # Predict and compute metrics
     print(f"[ ] Running predictions on {len(X_eval)} samples...")
     preds = model.predict(X_eval)
     mse = mean_squared_error(y_eval, preds)
     mae = mean_absolute_error(y_eval, preds)
     print(f"[✓] Eval results for {ticker} → MSE: {mse:.4f}, MAE: {mae:.4f}")
 
-    # Save results
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    result = {
+    results = {
         'ticker': ticker,
         'n_samples': len(X_eval),
         'mse': mse,
         'mae': mae
     }
-    out_path = os.path.join(RESULTS_DIR, f"{ticker}_eval_results.json")
-    with open(out_path, 'w') as f:
-        json.dump(result, f, indent=4)
-    print(f"[✓] Saved evaluation results to {out_path}")
+    with open(eval_results_path, 'w') as f:
+        import json
+        json.dump(results, f, indent=4)
+    print(f"[✓] Saved evaluation results to {eval_results_path}")
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description="Evaluate a stock-prediction model on current-month data"
+        description="Evaluate a stock-prediction model on a split"
     )
-    parser.add_argument(
-        '--ticker', required=True,
-        help="Ticker symbol to evaluate (e.g., AAPL)"
-    )
+    parser.add_argument('--ticker', required=True, help="Ticker symbol (e.g., AAPL)")
     args = parser.parse_args()
     evaluate_and_save(args.ticker)
