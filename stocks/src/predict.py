@@ -1,10 +1,13 @@
+# src/predict.py
+
 import os
+import argparse
 import pandas as pd
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+from datetime import timedelta
+
 from pandas.tseries.holiday import USFederalHolidayCalendar
 from pandas.tseries.offsets import CustomBusinessDay
-import argparse
-from datetime import timedelta
-from statsmodels.tsa.statespace.sarimax import SARIMAX
 
 from preprocess import parse_period_to_days, load_last_period
 
@@ -14,53 +17,64 @@ RESULTS_DIR = os.path.join(BASE_DIR, 'results')
 
 
 def forecast_sarimax(ticker: str, period: str, horizon: int):
-    """
-    Fits a SARIMAX(1,1,1)x(1,1,1,7) on the close series and
-    forecasts the next `horizon` days with 95% CI.
-    """
-    # 1) Load history
+    # 1) Load raw history (no weekends/holidays) and get Close series
     days = parse_period_to_days(period)
     df = load_last_period(ticker, days)
-    ts = df['Close']
+    raw_close = df['Close']
 
-    # 2) Fit SARIMAX with weekly seasonality
+    # 2) Build a business-day index with US federal holidays
+    bd = CustomBusinessDay(calendar=USFederalHolidayCalendar())
+    full_idx = pd.date_range(
+        start=raw_close.index.min(),
+        end=raw_close.index.max(),
+        freq=bd
+    )
+    # Reindex + forward-fill so it's truly regular
+    ts = raw_close.reindex(full_idx).ffill()
+    ts.index.freq = bd  # attach the freq so SARIMAX won't warn
+
+    # 3) Decide seasonal_order vs. plain ARIMA
+    seasonal_period = 7
+    if len(ts) < seasonal_period * 4:
+        # Not enough data to fit a reliable weekly seasonal component
+        seasonal = (0, 0, 0, 0)
+    else:
+        seasonal = (1, 1, 1, seasonal_period)
+
+    # 4) Fit the SARIMAX (or ARIMA) model
     model = SARIMAX(
         ts,
         order=(1, 1, 1),
-        seasonal_order=(1, 1, 1, 7),
+        seasonal_order=seasonal,
         enforce_stationarity=False,
         enforce_invertibility=False
     )
     res = model.fit(disp=False)
 
-    # 3) Forecast
+    # 5) Forecast the next `horizon` business days
     pred = res.get_forecast(steps=horizon)
     mean = pred.predicted_mean
-    ci = pred.conf_int(alpha=0.05)
+    ci   = pred.conf_int(alpha=0.05)
 
-    # 4) Build output DataFrame
-    # last_date = ts.index.max()
-    # dates = [ last_date + pd.Timedelta(days=i) for i in range(1, horizon+1) ]
-    last_date = ts.index.max()
-    us_bd = CustomBusinessDay(calendar=USFederalHolidayCalendar())
-    dates = pd.date_range(start=last_date + us_bd,
-                          periods=horizon,
-                          freq=us_bd)
-
+    # 6) Build output DataFrame
+    #    The forecast index already carries the correct freq, so we can use it directly:
+    forecast_index = mean.index
     out = pd.DataFrame({
-        'date': dates,
-        'ticker': ticker,
+        'date':         forecast_index.date,
+        'ticker':       ticker,
         'forecast_close': mean.values,
         'lower_95ci':   ci.iloc[:, 0].values,
         'upper_95ci':   ci.iloc[:, 1].values
     })
 
-    # 5) Save & display
+    # 7) Save & display
     os.makedirs(RESULTS_DIR, exist_ok=True)
     path = os.path.join(RESULTS_DIR, f"{ticker}_sarimax_{horizon}d.csv")
     out.to_csv(path, index=False)
     print(f"[✓] SARIMAX {horizon}-day forecast saved to {path}")
     print(out)
+
+    return out
 
 
 if __name__ == '__main__':
