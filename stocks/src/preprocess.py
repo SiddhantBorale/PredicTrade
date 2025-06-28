@@ -2,6 +2,8 @@ import os
 import pandas as pd
 from datetime import timedelta
 from features import compute_features
+from pandas.tseries.holiday import USFederalHolidayCalendar
+from pandas.tseries.offsets import CustomBusinessDay
 
 # Directories for raw and processed data
 RAW_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data', 'raw'))
@@ -45,6 +47,11 @@ def load_last_period(ticker: str, period_days: int) -> pd.DataFrame:
     if 'Close' not in df.columns:
         raise KeyError(f"Expected 'Price', 'Adj Close' or 'Close' in {path}")
 
+    df = df[df.index.dayofweek < 5]
+    # 2) drop Federal holidays
+    cal = USFederalHolidayCalendar()
+    holidays = cal.holidays(start=df.index.min(), end=df.index.max())
+    df = df[~df.index.isin(holidays)]
 
     # Limit to last period_days
     end_date = df.index.max()
