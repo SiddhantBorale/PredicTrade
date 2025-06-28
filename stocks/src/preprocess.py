@@ -96,6 +96,5 @@ if __name__ == '__main__':
     )
     parser.add_argument('--ticker', required=True, help="Ticker (e.g., AAPL)")
     parser.add_argument('--period', default='6mo', help="Data period (e.g., 6mo, 1y)")
-    parser.add_argument('--train_ratio', type=float, default=0.8, help="Fraction of data for training")
     args = parser.parse_args()
     process_ticker(args.ticker, args.period, args.train_ratio)

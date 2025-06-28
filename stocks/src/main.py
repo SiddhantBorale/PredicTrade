@@ -22,7 +22,7 @@ from fetch_data import get_history
 from preprocess import process_ticker
 from train import train_and_save
 from evaluate import evaluate_and_save
-from predict import predict_next_day
+from predict import predict_n_days
 
 
 def main():
@@ -37,10 +37,15 @@ def main():
         '--period', default='6mo',
         help="History period for fetch_data (e.g., 6mo, 1y)"
     )
+    parser.add_argument('--horizon', type=int, default=7, 
+        help="Number of days to predict")
+
+
     args = parser.parse_args()
 
     ticker = args.ticker.upper()
     period = args.period
+    horizon = args.horizon
 
     print(f"\n--- Stock Pipeline for {ticker} (period={period}) ---\n")
     # 1. Fetch raw data
@@ -61,7 +66,7 @@ def main():
 
     # 5. Predict
     print("[5/5] Generating prediction...")
-    predict_next_day(ticker, period)
+    predict_n_days(ticker, period, horizon)
 
     print("\nPipeline complete! Check data/processed/, models/, results/ for outputs.")
 

@@ -66,7 +66,7 @@ def train_and_save(ticker: str):
     earliest = dates.min()
     days_since = (dates - earliest).days.astype(float)
     # Add 1 to avoid zero weight, normalize to [0,1]
-    weights = (days_since + 1) / (days_since.max() + 1)
+    weights = (days_since + 2) / (days_since.max() + 1)
     
     print(f"[ ] Training XGBRegressor on {len(X_train)} samples with recency weighting...")
     model = XGBRegressor(n_estimators=100, verbosity=1)
