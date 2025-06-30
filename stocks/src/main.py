@@ -31,6 +31,9 @@ def main():
     train_ratio = args.train_ratio
     horizon     = args.horizon
 
+    BASE_DIR  = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    MODEL_DIR = os.path.join(BASE_DIR, 'models')
+
     print(f"\n--- Stock Pipeline for {ticker} (period={period}, horizon={horizon}d) ---\n")
 
     # 1) Fetch raw data
@@ -50,30 +53,34 @@ def main():
     evaluate_and_save(ticker)
 
     # 5) SARIMAX direct forecast
-    # print("[5/8] Generating SARIMAX forecast...")
-    # forecast_sarimax(ticker, period, horizon)
+    print("[5/8] Generating SARIMAX forecast...")
+    forecast_sarimax(ticker, period, horizon)
 
     # 6) Recursive XGBoost forecast (for stacking)
-    # print("[6/8] Generating recursive XGBoost forecast...")
-    # _ = forecast_xgb(ticker, period, horizon)
+    print("[6/8] Generating recursive XGBoost forecast...")
+    _ = forecast_xgb(ticker, period, horizon)
 
     # 7) Stacked ensemble of XGB + SARIMAX
-    # print("[7/8] Creating stacked ensemble forecast...")
-    # fit_and_predict_ensemble(ticker, period, horizon)
+    print("[7/8] Creating stacked ensemble forecast...")
+    fit_and_predict_ensemble(ticker, period, horizon)
 
     # 8) Optional Seq2Seq LSTM
     if args.use_lstm:
-        print("[8/8] Training Seq2Seq LSTM model...")
-        train_lstm_model(
-            ticker,
-            period,
-            window=args.lstm_window,
-            horizon=horizon,
-            epochs=args.lstm_epochs,
-            batch_size=args.lstm_batch
-        )
+        model_path = os.path.join(MODEL_DIR, f"{ticker}_lstm.keras")
+        # Only train if no saved model exists
+        if not os.path.exists(model_path):
+            print("[8/8] LSTM model not found. Training Seq2Seq LSTM model...")
+            train_lstm_model(
+                ticker,
+                period,
+                window=args.lstm_window,
+                horizon=horizon,
+                epochs=args.lstm_epochs,
+                batch_size=args.lstm_batch
+            )
+        else:
+            print("[8/8] Found existing LSTM model; skipping training.")
         print("[-->] Generating LSTM forecast...")
-        # Note: forecast_lstm now takes only (ticker, period, horizon)
         forecast_lstm(ticker, period, horizon)
 
 if __name__ == '__main__':
