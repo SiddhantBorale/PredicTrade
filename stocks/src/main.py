@@ -1,87 +1,85 @@
-#!/usr/bin/env python3
 import os
 import argparse
 
-from fetch_data import get_history
+from fetch_data import fetch_and_save
 from preprocess import process_ticker
-from train import train_and_save
-from evaluate import evaluate_and_save
-from predict import forecast_sarimax
+from train import train_and_save, XGB_AVAILABLE, _XGB_IMPORT_ERROR
+from evaluate import evaluate_model
 from predict_xgb import forecast_xgb
-from ensemble import fit_and_predict_ensemble
-from train_lstm import train_lstm_model
+from sarimax_forecast import forecast_sarimax
 from predict_lstm import forecast_lstm
+from ensemble import fit_and_predict_ensemble
+from utils import ensure_dirs
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="End-to-end stock forecasting pipeline with stacking and optional LSTM"
-    )
-    parser.add_argument('--ticker',      required=True,  help="Ticker symbol (e.g. AAPL)")
-    parser.add_argument('--period',      default='6mo',   help="Look-back window (e.g. 6mo, 1y)")
-    parser.add_argument('--train_ratio', type=float, default=0.8, help="Train/eval split ratio")
-    parser.add_argument('--horizon',     type=int,   default=7,    help="Days to forecast")
-    parser.add_argument('--lstm_window', type=int,   default=60,   help="LSTM input window size")
-    parser.add_argument('--lstm_epochs', type=int,   default=50,   help="LSTM training epochs")
-    parser.add_argument('--lstm_batch',  type=int,   default=32,   help="LSTM training batch size")
-    parser.add_argument('--use_lstm',    action='store_true',   help="Train & forecast with Seq2Seq LSTM")
+    parser = argparse.ArgumentParser(description="End-to-end stock pipeline")
+    parser.add_argument('--ticker', required=True)
+    parser.add_argument('--period', default='6mo')
+    parser.add_argument('--horizon', type=int, default=7)
+    parser.add_argument('--use_lstm', action='store_true')
+    parser.add_argument('--skip_xgb', action='store_true', help="Skip XGB train/predict stage")
     args = parser.parse_args()
 
-    ticker      = args.ticker.upper()
-    period      = args.period
-    train_ratio = args.train_ratio
-    horizon     = args.horizon
+    ticker = args.ticker.upper()
+    horizon = args.horizon
 
-    BASE_DIR  = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    MODEL_DIR = os.path.join(BASE_DIR, 'models')
+    print(f"\n--- Stock Pipeline for {ticker} (period={args.period}, horizon={horizon}d) ---\n")
+    ensure_dirs()
 
-    print(f"\n--- Stock Pipeline for {ticker} (period={period}, horizon={horizon}d) ---\n")
-
-    # 1) Fetch raw data
-    print("[1/8] Fetching raw data...")
-    get_history(ticker, period)
+    # 1) Fetch
+    print("[1/7] Fetching raw data...")
+    fetch_and_save(ticker, args.period)
 
     # 2) Preprocess
-    print("[2/8] Preprocessing data...")
-    process_ticker(ticker, period, train_ratio)
+    print("[2/7] Preprocessing data...")
+    process_ticker(ticker, args.period)
 
-    # 3) Train XGBoost
-    print("[3/8] Training XGBoost model...")
-    train_and_save(ticker)
-
-    # 4) Evaluate XGBoost
-    print("[4/8] Evaluating XGBoost model...")
-    evaluate_and_save(ticker)
-
-    # 5) SARIMAX direct forecast
-    print("[5/8] Generating SARIMAX forecast...")
-    forecast_sarimax(ticker, period, horizon)
-
-    # 6) Recursive XGBoost forecast (for stacking)
-    print("[6/8] Generating recursive XGBoost forecast...")
-    _ = forecast_xgb(ticker, period, horizon)
-
-    # 7) Stacked ensemble of XGB + SARIMAX
-    print("[7/8] Creating stacked ensemble forecast...")
-    fit_and_predict_ensemble(ticker, period, horizon)
-
-    # 8) Optional Seq2Seq LSTM
-    if args.use_lstm:
-        model_path = os.path.join(MODEL_DIR, f"{ticker}_lstm.keras")
-        # Only train if no saved model exists
-        if not os.path.exists(model_path):
-            print("[8/8] LSTM model not found. Training Seq2Seq LSTM model...")
-            train_lstm_model(
-                ticker,
-                period,
-                window=args.lstm_window,
-                horizon=horizon,
-                epochs=args.lstm_epochs,
-                batch_size=args.lstm_batch
-            )
+    # 3) Train XGB
+    if args.skip_xgb:
+        print("[3/7] Skipping XGB training by flag.")
+        xgb_ok = False
+    else:
+        print("[3/7] Training XGBoost model...")
+        if not XGB_AVAILABLE:
+            print(f"[!] XGBoost not available; skipping. Reason: {_XGB_IMPORT_ERROR}")
+            xgb_ok = False
         else:
-            print("[8/8] Found existing LSTM model; skipping training.")
-        print("[-->] Generating LSTM forecast...")
-        forecast_lstm(ticker, period, horizon)
+            xgb_ok = train_and_save(ticker)
 
-if __name__ == '__main__':
+    # 4) Evaluate XGB
+    print("[4/7] Evaluating XGBoost model...")
+    if xgb_ok:
+        evaluate_model(ticker)
+    else:
+        print("[ ] Skipped evaluation (no XGB model).")
+
+    # 5) Forecast SARIMAX
+    print("[5/7] Generating SARIMAX forecast...")
+    forecast_sarimax(ticker, args.period, horizon)
+
+    # 6) Forecast XGB (recursive)
+    print("[6/7] Generating XGB forecast...")
+    if xgb_ok:
+        forecast_xgb(ticker, args.period, horizon)
+    else:
+        print("[ ] Skipped XGB forecast (no model).")
+
+    # 7) LSTM (optional) + Ensemble
+    if args.use_lstm:
+        print("[7/7] Training + forecasting LSTM...")
+        ok = True
+        try:
+            from train_lstm import train_lstm_model
+            ok = train_lstm_model(ticker, horizon=horizon)
+        except Exception as e:
+            print(f"[!] LSTM training failed: {e}")
+            ok = False
+        if ok:
+            forecast_lstm(ticker, horizon=horizon)
+
+    # Ensemble (average available models)
+    print("[-->] Creating stacked ensemble forecast...")
+    fit_and_predict_ensemble(ticker, horizon)
+
+if __name__ == "__main__":
     main()

@@ -18,7 +18,7 @@ app.use(morgan('dev'));
 
 const PORT = process.env.PORT || 4000;
 const ROOT_DIR = path.resolve(__dirname, '..');        // repo root
-const RESULTS_DIR = path.join(ROOT_DIR, 'results');    // Python writes CSVs here
+const RESULTS_DIR = path.join(ROOT_DIR, 'data/processed');    // Python writes CSVs here
 const PYTHON = process.env.PYTHON_CMD || 'python';     // python or python3
 const PY_WRITES_TO_MONGO = String(process.env.PY_WRITES_TO_MONGO || 'false').toLowerCase() === 'true';
 

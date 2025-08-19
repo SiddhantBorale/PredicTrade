@@ -1,51 +1,41 @@
 import os
 import pandas as pd
-from sklearn.linear_model import Ridge
+from utils import RESULTS_DIR, safe_ticker
 
-from predict_xgb import forecast_xgb
-from predict import forecast_sarimax  # your SARIMAX script
+def _load_series(path: str, value_col: str = 'forecast_close'):
+    if not os.path.exists(path):
+        return None
+    df = pd.read_csv(path)
+    return df[['date', value_col]].rename(columns={value_col: os.path.splitext(os.path.basename(path))[0]})
 
-# Paths
-BASE_DIR    = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-RESULTS_DIR = os.path.join(BASE_DIR, 'results')
-
-def fit_and_predict_ensemble(ticker: str, period: str, horizon: int):
+def fit_and_predict_ensemble(ticker: str, horizon: int = 7) -> pd.DataFrame:
     """
-    1) Load base forecasts from XGB + SARIMAX
-    2) If there's past overlap in results/, train a Ridge meta‐model
-    3) Apply meta‐model (or fallback to simple average) for the final horizon
-    4) Save to results/{ticker}_ensemble_{horizon}d.csv
+    Average any available model forecasts among: xgb, sarimax, lstm.
+    Saves results/{SAFE}_ensemble_{h}d.csv
     """
-    # --- 1) Get base forecasts ---
-    xgb_df     = forecast_xgb(ticker, period, horizon).set_index('date')
-    sarimax_df = forecast_sarimax(ticker, period, horizon).set_index('date')[['forecast_close']].rename(columns={'forecast_close':'sarimax_pred'})
+    safe = safe_ticker(ticker)
 
-    base = xgb_df.join(sarimax_df, how='inner')  # only dates both methods predict
-    base['avg_pred'] = base[['xgb_pred','sarimax_pred']].mean(axis=1)
+    paths = {
+        'xgb':     os.path.join(RESULTS_DIR, f"{safe}_xgb_{horizon}d.csv"),
+        'sarimax': os.path.join(RESULTS_DIR, f"{safe}_sarimax_{horizon}d.csv"),
+        'lstm':    os.path.join(RESULTS_DIR, f"{safe}_lstm_{horizon}d.csv"),
+    }
 
-    # --- 2) Look for historical results to train meta-model ---
-    hist_path = os.path.join(RESULTS_DIR, f"{ticker}_history_preds.csv")
-    if os.path.exists(hist_path):
-        hist = pd.read_csv(hist_path, parse_dates=['date']).set_index('date')
-        # hist must have columns ['xgb_pred','sarimax_pred','actual_close']
-        df_train = hist.dropna(subset=['actual_close'])
-        X_train = df_train[['xgb_pred','sarimax_pred']]
-        y_train = df_train['actual_close']
-        meta = Ridge(alpha=1.0)
-        meta.fit(X_train, y_train)
-        # 3) apply meta‐model
-        base['ensemble'] = meta.predict(base[['xgb_pred','sarimax_pred']])
-    else:
-        # fallback to simple average if no history
-        base['ensemble'] = base['avg_pred']
+    frames = []
+    for model, p in paths.items():
+        if os.path.exists(p):
+            df = pd.read_csv(p)[['date','forecast_close']].rename(columns={'forecast_close': model})
+            frames.append(df.set_index('date'))
+    if not frames:
+        print("[!] No model forecasts found to ensemble.")
+        return None
 
-    # --- 4) Save ---
-    out = base.reset_index()[['date','ensemble']].rename(columns={'ensemble':'forecast_close'})
-    os.makedirs(RESULTS_DIR, exist_ok=True)
-    path = os.path.join(RESULTS_DIR, f"{ticker}_ensemble_{horizon}d.csv")
-    out.to_csv(path, index=False)
-    print(f"[✓] Saved ensemble {horizon}-day forecast to {path}")
-    print(out)
+    merged = pd.concat(frames, axis=1, join='inner')
+    merged['forecast_close'] = merged.mean(axis=1)
+    out = merged[['forecast_close']].reset_index()
+    out['ticker'] = ticker
 
-    # *** Optional: record this batch into history_preds.csv ***
-    # You’ll need to merge in the actual future closes once they occur.
+    out_path = os.path.join(RESULTS_DIR, f"{safe}_ensemble_{horizon}d.csv")
+    out.to_csv(out_path, index=False)
+    print(f"[✓] Saved ensemble {horizon}-day forecast to {out_path}")
+    return out
