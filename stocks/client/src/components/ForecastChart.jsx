@@ -1,45 +1,42 @@
-import * as React from 'react';
+import React, { useMemo } from 'react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from 'recharts';
-import dayjs from 'dayjs';
 
-function mergeSeries(seriesMap) {
-  // seriesMap: { ensemble: [{date,value}], lstm: [...], ... }
-  const allDates = new Set();
-  Object.values(seriesMap).forEach(arr => (arr || []).forEach(p => allDates.add(p.date)));
-  const dates = Array.from(allDates).sort();
-  return dates.map(d => {
-    const row = { date: d };
-    Object.keys(seriesMap).forEach(k => {
-      const found = (seriesMap[k] || []).find(x => x.date === d);
-      if (found) row[k] = found.value;
+// series: { ensemble: [{date,value}], lstm: [...], xgb: [...], sarimax: [...] }
+function mergeSeries(series) {
+  const map = new Map();
+  const add = (arr, key) => {
+    if (!arr) return;
+    arr.forEach(({ date, value }) => {
+      const d = String(date).slice(0, 10);
+      if (!map.has(d)) map.set(d, { date: d });
+      map.get(d)[key] = Number(value);
     });
-    return row;
-  });
+  };
+  add(series.ensemble, 'ensemble');
+  add(series.lstm, 'lstm');
+  add(series.xgb, 'xgb');
+  add(series.sarimax, 'sarimax');
+  return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export default function ForecastChart({ series }) {
-  const data = React.useMemo(() => mergeSeries(series), [series]);
+  const data = useMemo(() => mergeSeries(series), [series]);
+  const hasAny = data.length > 0;
+
+  if (!hasAny) return <div style={{ opacity: 0.7 }}>No predictions to display yet.</div>;
 
   return (
     <ResponsiveContainer width="100%" height={360}>
-      <LineChart data={data} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" />
-        <XAxis
-          dataKey="date"
-          tickFormatter={(d) => dayjs(d).format('MMM D')}
-          minTickGap={24}
-        />
-        <YAxis domain={['auto', 'auto']} />
-        <Tooltip
-          labelFormatter={(d) => dayjs(d).format('YYYY-MM-DD')}
-          formatter={(val, name) => [val?.toFixed?.(2), name.toUpperCase()]}
-        />
+      <LineChart data={data} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
+        <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+        <XAxis dataKey="date" />
+        <YAxis />
+        <Tooltip />
         <Legend />
-        {/* Lines auto-colored by Recharts; names must match keys in `data` */}
-        {series.ensemble && <Line type="monotone" dataKey="ensemble" dot={false} strokeWidth={2} />}
-        {series.lstm &&     <Line type="monotone" dataKey="lstm"     dot={false} strokeWidth={2} />}
-        {series.xgb &&      <Line type="monotone" dataKey="xgb"      dot={false} strokeWidth={2} />}
-        {series.sarimax &&  <Line type="monotone" dataKey="sarimax"  dot={false} strokeWidth={2} />}
+        {'ensemble' in data[0] && <Line type="monotone" dataKey="ensemble" stroke="#7c5cff" dot={false} />}
+        {'lstm' in data[0] && <Line type="monotone" dataKey="lstm" stroke="#22d3ee" dot={false} />}
+        {'xgb' in data[0] && <Line type="monotone" dataKey="xgb" stroke="#34d399" dot={false} />}
+        {'sarimax' in data[0] && <Line type="monotone" dataKey="sarimax" stroke="#f59e0b" dot={false} />}
       </LineChart>
     </ResponsiveContainer>
   );

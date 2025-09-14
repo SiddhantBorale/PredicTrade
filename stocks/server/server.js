@@ -17,6 +17,14 @@ app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
 
+
+app.use((req, res, next) => {
+  // 0 = no timeout
+  req.setTimeout(0);
+  res.setTimeout(0);
+  next();
+});
+
 // ────────────────────────────────────────────────────────────────
 // Config
 const PORT = process.env.PORT || 4000;
@@ -253,3 +261,6 @@ app.listen(PORT, () => {
   console.log(`Root dir:     ${ROOT_DIR}`);
   console.log(`Results dirs: ${RESULTS_DIRS.join(' , ')}`);
 });
+
+server.requestTimeout = 0;     // default ~5min → disable
+server.headersTimeout = 0;     // default ~60s  → disable

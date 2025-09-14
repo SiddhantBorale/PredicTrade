@@ -1,11 +1,8 @@
-// client/src/api.js
 import axios from 'axios';
 
-// If you use CRA proxy, baseURL can stay empty string.
-// Optionally set REACT_APP_API_BASE in .env if you deploy behind another URL.
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_BASE || '',
-  timeout: 300000, // 5 minutes
+  // proxy in package.json points to http://localhost:4000
+  timeout: 120000
 });
 
 export async function runPipeline({ ticker, period, horizon, useLstm }) {
@@ -13,7 +10,7 @@ export async function runPipeline({ ticker, period, horizon, useLstm }) {
     ticker,
     period,
     horizon,
-    use_lstm: useLstm ? 'true' : 'false',
+    use_lstm: !!useLstm
   };
   const { data } = await api.get('/api/run', { params });
   return data;
@@ -21,7 +18,6 @@ export async function runPipeline({ ticker, period, horizon, useLstm }) {
 
 export async function fetchPredictions(ticker, model = 'ensemble') {
   const { data } = await api.get('/api/predictions', { params: { ticker, model } });
+  // data -> [{ date: 'YYYY-MM-DD', value: number }]
   return data;
 }
-
-export default api;
